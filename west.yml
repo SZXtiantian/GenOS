@@ -1,0 +1,28 @@
+manifest:
+  remotes:
+    - name: genos-org
+      url-base: https://github.com/SZXtiantian
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    # 1. 指向你刚才推送的内核仓库和分支
+    - name: zephyr
+      remote: genos-org
+      revision: Zephyr_TFM
+      import: true 
+
+    # 2. 指向你推送的 TFM 仓库和分支，并存放到指定路径
+    - name: trusted-firmware-m
+      remote: genos-org
+      path: modules/tee/tf-m/trusted-firmware-m
+      revision: genos_main
+
+    # 3. 指向你推送的应用仓库及其 zephyr 分支
+    - name: GenOS_Apps
+      remote: genos-org
+      path: GenOS_Apps
+      revision: zephyr
+
+  self:
+    path: GenOS
