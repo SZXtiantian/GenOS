@@ -5,15 +5,15 @@
 ---
 
 ## 目录 (Table of Contents) 📚
-- [系统组成 (System Components)](#系统组成-system-components) 🧭
-- [快速部署 (Quick Deployment)](#快速部署-quick-deployment) ⚡
-- [样例应用演示：安全 I2C 访问 (Sample: Secure I2C Access)](#样例应用演示安全-i2c-访问-sample-secure-i2c-access) 🔐📡
-- [开发者自定义规范 (Extension Rules)](#开发者自定义规范-extension-rules) ✍️
-- [结语 (Conclusion)](#结语-conclusion) 🎯
+- [系统组成 (System Components)](#system-components) 🧭
+- [快速部署 (Quick Deployment)](#quick-deployment) ⚡
+- [样例应用演示：安全 I2C 访问 (Sample: Secure I2C Access)](#sample-secure-i2c-access) 🔐📡
+- [开发者自定义规范 (Extension Rules)](#extension-rules) ✍️
+- [结语 (Conclusion)](#conclusion) 🎯
 
 ---
 
-## 系统组成 (System Components) 🧩
+<h2 id="system-components">系统组成 (System Components) 🧩</h2>
 
 下面是本样例系统的主要组件与职责说明：
 
@@ -26,7 +26,7 @@
 
 ---
 
-## 快速部署 (Quick Deployment) ⚡
+<h2 id="quick-deployment">快速部署 (Quick Deployment) ⚡</h2>
 
 在本地复现该示例系统只需两步：
 
@@ -42,12 +42,12 @@ west update
 
 ---
 
-## 样例应用演示：安全 I2C 访问 (Sample: Secure I2C Access) 🔐📡
+<h2 id="sample-secure-i2c-access">样例应用演示：安全 I2C 访问 (Sample: Secure I2C Access) 🔐📡</h2>
 
 此样例展示“安全域驱动外设”的典型场景：
 
 - 安全侧 (TF‑M)：  
-  在安全域中，使用 `tfm_partition` 驱动 I2C 硬件，安全域负责直接访问传感器并对敏感数据进行保护，不向非安全域开放直接硬件访问权限。🔑🧪
+  在安全域中，使用 `tfm_partition` 驱动 I2C 硬件，安全域负责直接访问传感器并对敏感数据进行保护，不向非安全域开放直接硬件访问权限。🔑🔐
 
 - 应用侧 (Zephyr / 非安全域)：  
   通过 PSA API 向安全侧发起请求，由安全侧返回传感器数据或处理结果，实现受限硬件访问与权限控制。🔁📋
@@ -63,7 +63,7 @@ west build -b nrf5340dk/nrf5340/cpuapp/ns GenOS_Apps/my_tfm_app1/zephyr_app
 
 ---
 
-## 开发者自定义规范 (Extension Rules) ✍️
+<h2 id="extension-rules">开发者自定义规范 (Extension Rules) ✍️</h2>
 
 如果您希望基于此样例扩展自定义物联网方案，请遵循以下约定以保证与 GenOS 构建系统兼容：
 
@@ -73,7 +73,7 @@ west build -b nrf5340dk/nrf5340/cpuapp/ns GenOS_Apps/my_tfm_app1/zephyr_app
 
 ---
 
-## 结语 (Conclusion) 🎯
+<h2 id="conclusion">结语 (Conclusion) 🎯</h2>
 
 GenOS 致力于简化复杂嵌入式系统的构建与集成流程。本示例展示了基础功能与最佳实践，更多高级特性（如 OTA 升级、多核通信、自动化 CI 流水线）请参考仓库文档或联系维护者了解详情。📌🔍
 
