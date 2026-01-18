@@ -1,6 +1,6 @@
 #  GenOS：功能演示样例 (Sample Project) 
 
-本仓库展示了使用 GenOS 框架自动生成的物联网操作系统示例。它将 Zephyr RTOS 的实时处理能力与 Trusted Firmware-M (TF‑M) 的硬件级安全隔离结合，为工业物联网应用提供了一套参考实现与演示。🧩🔒
+本仓库展示了使用 GenOS 框架自动生成的物联网操作系统示例。它将 **Zephyr RTOS** 的实时处理能力与 **Trusted Firmware-M (TF‑M)** 的硬件级安全隔离结合，为工业物联网应用提供了一套参考实现与演示。🧩🔒
 
 ---
 
