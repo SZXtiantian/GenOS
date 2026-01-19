@@ -193,3 +193,9 @@ west build -b nrf5340dk/nrf5340/cpuapp/ns GenOS_Apps/my_tfm_app1/zephyr_app
 GenOS 致力于简化复杂嵌入式系统的构建与集成流程。本示例展示了基础功能与最佳实践，更多高级特性（如 OTA 升级、多核通信、自动化 CI 流水线）请参考仓库文档或联系维护者了解详情。📌🔍
 
 感谢使用 GenOS，欢迎反馈与贡献！🤝✨
+
+---
+
+<h2 id="License">开源协议 </h2>
+
+本项目遵循 [MIT License](LICENSE) 开源协议。
