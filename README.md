@@ -1,5 +1,9 @@
 #  GenOS的功能演示样例 (Sample Project) 
 
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-20.04%20LTS-E95420?style=flat&logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![CMake](https://img.shields.io/badge/CMake-3.20.5%2B-44CC11?style=flat&logo=cmake&logoColor=white)](https://cmake.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-FFD43B?style=flat&logo=python&logoColor=white)](https://www.python.org/)
+
 本仓库展示了使用 GenOS 框架自动生成的物联网操作系统示例。本仓库展示了使用 GenOS 框架自动生成的物联网操作系统示例。它将 **Zephyr RTOS** 的实时处理能力与 **Trusted Firmware-M (TF‑M)** 的硬件级安全隔离结合，为工业物联网应用提供了一套参考实现与演示。  
 
 ---
@@ -150,8 +154,22 @@ west sdk install
   通过 PSA API 向安全侧发起请求，由安全侧返回传感器数据或处理结果，实现受限硬件访问与权限控制。
 
 构建示例（以 **nRF5340 DK** 开发板为例，双核架构）：
+🛠 编译前准备
 
+在使用本项目前，请修改 `~/GenOS/module/tee/tf-m/trusted-firmware-m/secure_fw/partitions/CMakeLists.txt` 中的路径配置以适配您的开发环境：
+
+1. 打开 `~/GenOS/module/tee/tf-m/trusted-firmware-m/secure_fw/partitions/CMakeLists.txt`。
+2. 找到以下部分并更新路径：
+
+```cmake
+# 将下方的路径修改为您本地的实际路径
+set(TFM_EXTRA_PARTITION_PATHS "/<您的绝对路径>/GenOS_Apps/my_tfm_app1/tfm_partition" CACHE STRING "" FORCE)
+set(TFM_EXTRA_MANIFEST_LIST_FILES "/<您的绝对路径>/GenOS_Apps/my_tfm_app1/tfm_partition/extra_manifest_list.yaml" CACHE STRING "" FORCE)
+```
+保存退出后返回GenOS目录下，构建非安全域应用镜像（系统会自动联动构建安全域固件）
 ```bash
+# 返回GenOS目录
+cd ~/GenOS
 # 构建非安全域应用镜像（系统会自动联动构建安全域固件）
 west build -b nrf5340dk/nrf5340/cpuapp/ns GenOS_Apps/my_tfm_app1/zephyr_app
 ```
