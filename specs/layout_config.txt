@@ -1,0 +1,29 @@
+# GenOS Device Abstraction Layer (DAL) Layout Specification
+# Project: nRF5340 I2C Manager Integration
+
+[WORKSPACE_ROOT]
+./output/trusted-firmware-m
+
+[GENERATION_TARGETS]
+# Level | Spec Source (Phase 1 & 2) | Source Output Path | Header Output Path
+L1 | L1_phase1.txt, L1_phase2.txt | platform/ext/device_abstraction/io_manager/device.c | platform/ext/device_abstraction/include/io_manager/device.h
+L2 | L2_phase1.txt, L2_phase2.txt | platform/ext/device_abstraction/frameworks/I2C/dev_i2c_core.c | platform/ext/device_abstraction/include/frameworks/i2c_core.h
+L3 | L3_phase1.txt, L3_phase2.txt | platform/ext/device_abstraction/drivers/nrf5340/i2c_adapter.c | platform/ext/device_abstraction/include/drivers/i2c_adapter.h
+
+[STATIC_COMPONENTS]
+# Level | Source Origin | Target Directory (Professional Naming)
+L4 | components/drivers/nrf5340/i2c/ | platform/ext/device_abstraction/drivers/nrf5340/hw_engine/
+
+[BUILD_SYSTEM]
+# New CMakeLists for the abstraction layer
+CHILD_CMAKE: platform/ext/device_abstraction/CMakeLists.txt
+# Root CMake to modify
+ROOT_CMAKE: platform/CMakeLists.txt
+# Include directories for CMake
+INCLUDE_DIRS: platform/ext/device_abstraction/include/
+
+[RULES]
+1. Phase 1 provides the skeleton, Phase 2 provides semantics. The LLM must integrate both into a single FINAL .c and .h file.
+2. All paths are relative to [WORKSPACE_ROOT].
+3. L4 files must be copied from components to the hw_engine directory without renaming individual files to maintain replayer API compatibility[cite: 131].
+4. The abstraction layer must be standalone but linked via the ROOT_CMAKE using target_include_directories.

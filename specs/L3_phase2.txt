@@ -1,0 +1,60 @@
+Phase 2: Refined Implementation (Fill in Semantics)
+Task
+Refine the Phase 1 implementation by fully specifying: - message-to-replayer translation rules (fast path + generic path), - error handling and return conventions, and - adapter initialization and ops binding behavior.
+You can use information from the additional [RELY], [GUARANTEE], and [SPECIFICATION] sections below. Please output only the resulting file.
+________________________________________
+[RELY] (Additional for Phase 2)
+Low-level return convention
+•	replayer_i2c_write_read() returns 0 on success and -1 on failure.
+•	replayer_i2c_write() returns 0 on success and -1 on failure.
+•	replayer_i2c_read() returns void (no explicit error reporting).
+________________________________________
+[GUARANTEE] (Additional for Phase 2)
+1)	No modification of message descriptors:
+•	L3 must not modify msgs[i].addr, msgs[i].flags, or msgs[i].len.
+•	L3 may write into msgs[i].buf only for read messages.
+2)	Fast-path equivalence:
+•	If a fast path is used, the observable behavior must be equivalent to executing the two messages in order.
+3)	Error propagation:
+•	Any failure reported by replayer_i2c_write_read() or replayer_i2c_write() must be converted into a negative error return (ST_EIO) from st_nrf5340_i2c_master_xfer().
+________________________________________
+[SPECIFICATION] (Additional for Phase 2)
+Refined postcondition: st_nrf5340_i2c_master_xfer()
+The function translates and dispatches msgs[] into replayer calls and returns: - num on complete success, - ST_EIO (negative) if any write or write_read primitive reports failure.
+Case 1: Combined Write-Then-Read Fast Path
+If all conditions hold: - num == 2 - msgs[0] is write: (msgs[0].flags & ST_I2C_RD) == 0 - msgs[1] is read: (msgs[1].flags & ST_I2C_RD) != 0 - msgs[0].len > 0
+Then 1) Interpret msgs[0].buf[0] as reg_num. 2) Call: - rc = replayer_i2c_write_read((st_uint8_t)msgs[0].addr,                                   msgs[0].buf[0],                                   msgs[1].buf,                                   (st_uint8_t)msgs[1].len) 3) If rc != 0, return (st_ssize_t)ST_EIO. 4) Else return 2.
+Meaning: - One-byte register selector write followed by a read of msgs[1].len bytes.
+Case 2: Generic Sequential Processing
+Else process messages in order i = 0..num-1:
+•	Read message if (msgs[i].flags & ST_I2C_RD) != 0:
+1)	Call replayer_i2c_read((st_uint8_t)msgs[i].addr, msgs[i].buf, (st_uint8_t)msgs[i].len).
+2)	Treat as success (no explicit error code available).
+•	Write message otherwise:
+o	If msgs[i].len == 0: treat as no-op and continue.
+o	If msgs[i].len == 1:
+	rc = replayer_i2c_write((st_uint8_t)msgs[i].addr, msgs[i].buf[0], NULL, 0)
+	If rc != 0, return (st_ssize_t)ST_EIO.
+o	If msgs[i].len > 1:
+	reg_num = msgs[i].buf[0]
+	payload = &msgs[i].buf[1], payload_len = (st_uint8_t)(msgs[i].len - 1)
+	rc = replayer_i2c_write((st_uint8_t)msgs[i].addr, reg_num, payload, payload_len)
+	If rc != 0, return (st_ssize_t)ST_EIO.
+At the end of Case 2, return (st_ssize_t)num.
+Refined system algorithm
+1)	Check fast path pattern; if it matches, execute Case 1.
+2)	Otherwise execute Case 2.
+Adapter initialization: st_nrf5340_i2c_adapter_init()
+Precondition
+•	name != NULL and non-empty.
+Postcondition
+•	Exactly one I2C bus instance for the replayer-backed nRF5340 I2C controller is registered under name.
+•	The bus instance has:
+o	bus->i2c_ops pointing to a static ops table with .master_xfer = st_nrf5340_i2c_master_xfer.
+System Algorithm
+1)	Validate name.
+2)	Call replayer_i2c_init() exactly once per process boot (idempotent behavior is acceptable).
+3)	Zero-initialize the static bus object.
+4)	Bind bus->i2c_ops to the static ops table.
+5)	Register via st_device_register((struct st_device*)bus, name, ST_DEVICE_CLASS_I2C, 0).
+6)	Return the registration status.

@@ -1,0 +1,186 @@
+Phase 1: Initial Implementation (Code Skeleton)
+Task
+Provide a complete C file that implements the L2 I2C class operations listed above. You can use information from [RELY], [GUARANTEE], and [SPECIFICATION] as described below. Please output only the resulting file.
+Phase 1 is allowed to be a skeleton that compiles and contains the correct data structures and control-flow scaffolding, while leaving the detailed semantic rules to Phase 2.
+________________________________________
+[RELY]
+L1 dependency (device base class)
+The L2 layer relies on the existence of L1 device management types and conventions:
+typedef int32_t st_err_t;
+typedef int32_t st_ssize_t;
+
+#define ST_EOK      (0)
+#define ST_EINVAL   (-22)
+#define ST_EBUSY    (-16)
+#define ST_ENOSYS   (-38)
+
+struct st_device;
+
+struct st_device_ops {
+    st_err_t (*open)(struct st_device *dev, uint32_t oflag);
+    st_err_t (*close)(struct st_device *dev);
+    st_ssize_t (*read)(struct st_device *dev, uint32_t pos, void *buffer, uint32_t size);
+    st_ssize_t (*write)(struct st_device *dev, uint32_t pos, const void *buffer, uint32_t size);
+    st_err_t (*control)(struct st_device *dev, int cmd, void *arg);
+};
+
+struct st_device {
+    /* L1-owned fields (not repeated here) */
+    const struct st_device_ops *ops;
+    void *user_data;
+};
+Basic types
+typedef uint8_t  st_uint8_t;
+typedef uint16_t st_uint16_t;
+typedef uint32_t st_uint32_t;
+Mutex primitive
+typedef struct st_mutex st_mutex_t;
+void st_mutex_init(st_mutex_t *m);
+void st_mutex_lock(st_mutex_t *m);
+void st_mutex_unlock(st_mutex_t *m);
+________________________________________
+[RELY] (I2C class definitions)
+I2C message model
+#define ST_I2C_RD       (1u << 0)  /* message is a read */
+
+/* Optional flags (may be ignored by some L3 implementations unless Phase 2 requires them) */
+#define ST_I2C_NO_START (1u << 1)
+#define ST_I2C_NO_STOP  (1u << 2)
+
+struct st_i2c_msg {
+    st_uint16_t addr;   /* 7-bit address in low bits */
+    st_uint16_t flags;  /* ST_I2C_RD and optional flags */
+    st_uint16_t len;    /* bytes in buf */
+    st_uint8_t *buf;    /* tx or rx buffer */
+};
+I2C bus configuration
+struct st_i2c_config {
+    st_uint32_t bus_hz;       /* bus frequency (Hz) */
+    st_uint32_t timeout_ms;   /* per-transfer timeout */
+    st_uint32_t retries;      /* retry count on transient errors */
+};
+I2C operation table (implemented by L3)
+struct st_i2c_bus_device;
+
+struct st_i2c_ops {
+    /* Initialize/deinitialize the underlying controller (optional). */
+    st_err_t (*init)(struct st_i2c_bus_device *bus);
+    st_err_t (*deinit)(struct st_i2c_bus_device *bus);
+
+    /* Core master transfer: returns processed message count, or negative error. */
+    st_ssize_t (*master_xfer)(struct st_i2c_bus_device *bus,
+                             struct st_i2c_msg msgs[],
+                             st_uint32_t num);
+
+    /* Apply configuration or device-specific controls (optional). */
+    st_err_t (*control)(struct st_i2c_bus_device *bus, int cmd, void *arg);
+};
+I2C bus device type
+#define ST_DEVICE_CLASS_I2C (0x0102u)
+
+struct st_i2c_bus_device {
+    struct st_device parent;          /* L1 device base */
+    const struct st_i2c_ops *i2c_ops; /* L2 ops table */
+
+    /* L2-managed state */
+    struct st_i2c_config cfg;
+    st_mutex_t bus_lock;
+};
+Control command identifiers
+enum {
+    ST_I2C_CMD_SET_CONFIG = 0x1000,  /* arg: struct st_i2c_config* */
+    ST_I2C_CMD_GET_CONFIG = 0x1001,  /* arg: struct st_i2c_config* */
+    ST_I2C_CMD_RESET      = 0x1002,  /* arg: NULL */
+};
+________________________________________
+[GUARANTEE]
+API Compliance
+The implementation must provide the following exact signatures:
+st_err_t   st_i2c_bus_init(struct st_i2c_bus_device *bus);
+st_err_t   st_i2c_bus_deinit(struct st_i2c_bus_device *bus);
+
+void       st_i2c_bus_lock(struct st_i2c_bus_device *bus);
+void       st_i2c_bus_unlock(struct st_i2c_bus_device *bus);
+
+st_ssize_t st_i2c_transfer(struct st_i2c_bus_device *bus,
+                           struct st_i2c_msg msgs[],
+                           st_uint32_t num);
+
+st_err_t   st_i2c_control(struct st_i2c_bus_device *bus, int cmd, void *arg);
+Layering
+•	L2 must not call any SoC SDK/HAL directly.
+•	All hardware actions are delegated to bus->i2c_ops.
+________________________________________
+[SPECIFICATION]
+Global invariants
+1)	struct st_i2c_bus_device is a valid L1 device instance whose parent has been registered using L1.
+2)	bus->i2c_ops is the authoritative driver interface for I2C behavior.
+3)	bus->bus_lock provides transfer-level mutual exclusion at the class layer.
+________________________________________
+Error model
+•	st_i2c_transfer() returns:
+o	>= 0: the number of messages processed.
+o	< 0: a negative st_err_t error code.
+•	st_i2c_control() returns ST_EOK on success, negative error otherwise.
+•	Unsupported operations return ST_ENOSYS.
+________________________________________
+Operation: st_i2c_bus_init()
+Precondition
+•	bus != NULL
+•	bus->i2c_ops != NULL
+Postcondition
+•	Initializes bus->bus_lock.
+•	If bus->i2c_ops->init exists, calls it exactly once.
+•	On success, the bus is ready for st_i2c_transfer().
+System Algorithm (Phase 2 refined details apply)
+1)	Validate arguments.
+2)	Initialize bus_lock.
+3)	If i2c_ops->init is present, call it.
+4)	Return status.
+________________________________________
+Operation: st_i2c_bus_deinit()
+Precondition
+•	bus != NULL
+•	bus->i2c_ops != NULL
+Postcondition
+•	If bus->i2c_ops->deinit exists, calls it exactly once.
+________________________________________
+Operation: st_i2c_bus_lock() / st_i2c_bus_unlock()
+Precondition
+•	bus != NULL
+Postcondition
+•	st_i2c_bus_lock() provides exclusive access to the bus for the calling context.
+•	st_i2c_bus_unlock() releases the exclusive access.
+________________________________________
+Operation: st_i2c_transfer()
+Precondition
+1)	bus != NULL
+2)	msgs != NULL
+3)	num >= 1
+4)	bus->i2c_ops != NULL and bus->i2c_ops->master_xfer != NULL
+5)	For all i in [0, num):
+o	if msgs[i].len > 0 then msgs[i].buf != NULL
+o	msgs[i].addr encodes a 7-bit address in the low bits
+Postcondition
+•	The function calls bus->i2c_ops->master_xfer(bus, msgs, num) exactly once and returns its result.
+•	Detailed message semantics (ordering, combined transactions, optional flags) are defined in Phase 2.
+Skeleton System Algorithm
+1)	Validate arguments.
+2)	Acquire bus lock.
+3)	Dispatch to i2c_ops->master_xfer.
+4)	Release bus lock.
+5)	Return result.
+________________________________________
+Operation: st_i2c_control()
+Precondition
+•	bus != NULL
+Postcondition
+•	If cmd is ST_I2C_CMD_SET_CONFIG:
+o	updates bus->cfg from *(struct st_i2c_config*)arg.
+o	if bus->i2c_ops->control exists, forwards the command.
+•	If cmd is ST_I2C_CMD_GET_CONFIG:
+o	writes current bus->cfg into *(struct st_i2c_config*)arg.
+•	If cmd is ST_I2C_CMD_RESET:
+o	if bus->i2c_ops->control exists, forwards the command.
+•	If unsupported: return ST_ENOSYS.
+________________________________________

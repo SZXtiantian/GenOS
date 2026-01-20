@@ -1,0 +1,55 @@
+Phase 2: Refined Implementation (Fill in Semantics)
+Task
+Refine the Phase 1 implementation by fully specifying: - message semantics and allowed transaction patterns, - concurrency rules at the I2C class boundary, and - configuration/control behavior.
+You can use information from the additional [RELY], [GUARANTEE], and [SPECIFICATION] sections below. Please output only the resulting file.
+________________________________________
+[RELY] (Additional for Phase 2)
+Supported transaction patterns (class-level)
+•	The class layer supports expressing transactions as an ordered array of struct st_i2c_msg.
+•	Combined transactions are permitted as sequences; L3 may implement fast paths but must preserve the observable semantics defined below.
+________________________________________
+[GUARANTEE] (Additional for Phase 2)
+1)	Transfer atomicity: st_i2c_transfer() must hold bus_lock for the entire duration of i2c_ops->master_xfer().
+2)	No lock leaks: st_i2c_transfer() must release bus_lock on all control-flow paths.
+3)	No modification of message descriptors:
+•	L2 must not modify msgs[i].addr, msgs[i].flags, or msgs[i].len.
+•	L2 may allow L3 to write into msgs[i].buf for read messages.
+4)	Deterministic config handling:
+•	ST_I2C_CMD_SET_CONFIG updates bus->cfg before forwarding to L3.
+________________________________________
+[SPECIFICATION] (Additional for Phase 2)
+Refined message semantics
+1)	Ordering: Messages are executed strictly in index order 0..num-1.
+2)	Read vs write:
+•	Read message if (flags & ST_I2C_RD) != 0: implementation must write received bytes into buf[0..len-1].
+•	Write message otherwise: implementation must transmit buf[0..len-1].
+3)	Optional flags (ST_I2C_NO_START, ST_I2C_NO_STOP):
+•	Unless the platform explicitly supports them, these flags are treated as hints and may be ignored by L3.
+•	If a platform supports them, behavior must be documented in the L3 spec; L2 only defines the encoding.
+4)	Return semantics:
+•	On complete success: return (st_ssize_t)num.
+•	On failure: return a negative error code.
+•	Partial completion is permitted only if the L3 driver documents it; otherwise, failures should be treated as atomic failure.
+Refined control semantics
+•	ST_I2C_CMD_SET_CONFIG:
+o	arg != NULL and points to a valid struct st_i2c_config.
+o	L2 copies the config into bus->cfg.
+o	If i2c_ops->control exists, L2 forwards the command; otherwise returns ST_EOK.
+•	ST_I2C_CMD_GET_CONFIG:
+o	arg != NULL and points to a valid struct st_i2c_config.
+o	L2 copies bus->cfg into *arg and returns ST_EOK.
+•	ST_I2C_CMD_RESET:
+o	If i2c_ops->control exists, forward and return its result.
+o	Else return ST_ENOSYS.
+Refined system algorithms
+st_i2c_transfer()
+1)	Validate bus, msgs, num, and i2c_ops->master_xfer.
+2)	Acquire bus_lock.
+3)	Call i2c_ops->master_xfer(bus, msgs, num) exactly once.
+4)	Release bus_lock.
+5)	Return the result.
+st_i2c_control()
+1)	Validate bus and arg when required by cmd.
+2)	For SET_CONFIG, update bus->cfg first.
+3)	If forwarding is required and i2c_ops->control exists, call it exactly once.
+4)	Return status.

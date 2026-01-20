@@ -1,0 +1,75 @@
+Phase 2: Refined Implementation (Fill in Semantics)
+Task
+Refine the Phase 1 implementation by fully specifying: - registry uniqueness rules and name handling, - thread-safety and lock ordering, - open/close state transitions, and - wrapper behavior and error handling.
+You can use information from the additional [RELY], [GUARANTEE], and [SPECIFICATION] sections below. Please output only the resulting file.
+________________________________________
+[RELY] (Additional for Phase 2)
+Registry state
+/* Global registry head and lock (defined in the implementation file) */
+static struct st_list_node g_st_device_list;
+static st_mutex_t g_st_device_registry_lock;
+Locking rule
+•	Registry lock protects registry list membership and name uniqueness checks.
+•	Per-device lock protects open/close/control state (open_count, open_flags) and serializes calls to ops->open/close/control.
+Lock ordering (must never be violated): 1) g_st_device_registry_lock 2) dev->lock
+________________________________________
+[GUARANTEE] (Additional for Phase 2)
+1)	Thread-safety:
+•	st_device_register/unregister/find are thread-safe.
+•	st_device_open/close/control are thread-safe per-device.
+2)	No deadlocks:
+•	The lock ordering defined above must be respected.
+3)	Deterministic name matching:
+•	Matching uses st_strncmp(dev->parent.name, name, ST_NAME_MAX).
+________________________________________
+[SPECIFICATION] (Additional for Phase 2)
+Refined name handling
+•	Registration fails with ST_EINVAL if name is empty or if st_strnlen(name, ST_NAME_MAX) == ST_NAME_MAX (i.e., no null terminator within the limit).
+•	On success, dev->parent.name is populated as a full, null-terminated copy (exactly preserved) of name.
+Refined registry semantics
+•	st_device_register() must return ST_EEXIST if any registered device has the same name.
+•	st_device_unregister() must return ST_EINVAL if dev is not registered.
+Refined open/close state semantics
+•	On each successful st_device_open(dev, oflag):
+o	open_count increments by 1.
+o	open_flags becomes open_flags | oflag.
+•	On each successful st_device_close(dev):
+o	open_count decrements by 1.
+o	if open_count becomes 0, open_flags is cleared to 0.
+Wrapper return conventions
+•	If an operation is unsupported:
+o	st_device_read/write return (st_ssize_t)ST_ENOSYS.
+o	st_device_control returns ST_ENOSYS.
+Refined system algorithms
+st_device_register()
+1)	Validate dev and name.
+2)	Acquire g_st_device_registry_lock.
+3)	Ensure name is unique across the registry.
+4)	Initialize dev->parent (cls/type/flags/name, list node).
+5)	Initialize dev->open_count = 0, dev->open_flags = 0.
+6)	Initialize dev->lock.
+7)	Insert dev into g_st_device_list.
+8)	Release g_st_device_registry_lock.
+9)	Return ST_EOK.
+st_device_unregister()
+1)	Validate dev.
+2)	Acquire g_st_device_registry_lock.
+3)	Verify dev is registered (membership check is implementation-defined but must be correct).
+4)	If dev->open_count > 0: release lock and return ST_EBUSY.
+5)	Remove dev from the registry list.
+6)	Release g_st_device_registry_lock.
+7)	Return ST_EOK.
+st_device_find()
+1)	Validate name.
+2)	Acquire g_st_device_registry_lock.
+3)	Iterate registry list; on first match, store pointer.
+4)	Release g_st_device_registry_lock.
+5)	Return pointer (or NULL).
+st_device_open() / st_device_close()
+•	Must lock dev->lock around:
+o	validating state,
+o	calling ops->open/close, and
+o	updating open_count/open_flags.
+Wrappers
+•	Must validate dev and ops pointers.
+•	Must dispatch exactly once when supported.

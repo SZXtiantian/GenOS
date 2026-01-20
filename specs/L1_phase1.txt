@@ -1,0 +1,204 @@
+Phase 1: Initial Implementation (Code Skeleton)
+Task
+Provide a complete C file that implements the L1 device management operations listed above. You can use information from [RELY], [GUARANTEE], and [SPECIFICATION] as described below. Please output only the resulting file.
+Phase 1 is allowed to be a skeleton that compiles and contains the correct data structures and control-flow scaffolding, while leaving the detailed semantic rules to Phase 2.
+________________________________________
+[RELY]
+Basic types and status codes
+typedef int32_t st_err_t;
+typedef int32_t st_ssize_t;
+
+#define ST_EOK      (0)
+#define ST_EINVAL   (-22)
+#define ST_ENOENT   (-2)
+#define ST_EBUSY    (-16)
+#define ST_EEXIST   (-17)
+#define ST_ENOSYS   (-38)
+
+#define ST_NAME_MAX (32)
+Minimal list and lock primitives
+struct st_list_node {
+    struct st_list_node *prev;
+    struct st_list_node *next;
+};
+
+void st_list_init(struct st_list_node *n);
+void st_list_insert_tail(struct st_list_node *head, struct st_list_node *n);
+void st_list_remove(struct st_list_node *n);
+int  st_list_is_empty(const struct st_list_node *head);
+
+typedef struct st_mutex st_mutex_t;
+void st_mutex_init(st_mutex_t *m);
+void st_mutex_lock(st_mutex_t *m);
+void st_mutex_unlock(st_mutex_t *m);
+Minimal libc-like helpers
+size_t st_strnlen(const char *s, size_t maxlen);
+int    st_strncmp(const char *a, const char *b, size_t n);
+void  *st_memset(void *dst, int v, size_t n);
+void  *st_memcpy(void *dst, const void *src, size_t n);
+Object and device model
+typedef enum {
+    ST_OBJECT_UNKNOWN = 0,
+    ST_OBJECT_DEVICE  = 1,
+} st_object_class_t;
+
+struct st_object {
+    char name[ST_NAME_MAX];
+    uint16_t type;                 /* device class/type identifier */
+    uint16_t flags;                /* framework flags */
+    st_object_class_t cls;
+    struct st_list_node node;      /* link into a registry */
+};
+
+struct st_device;
+
+struct st_device_ops {
+    st_err_t (*open)(struct st_device *dev, uint32_t oflag);
+    st_err_t (*close)(struct st_device *dev);
+    st_ssize_t (*read)(struct st_device *dev, uint32_t pos, void *buffer, uint32_t size);
+    st_ssize_t (*write)(struct st_device *dev, uint32_t pos, const void *buffer, uint32_t size);
+    st_err_t (*control)(struct st_device *dev, int cmd, void *arg);
+};
+
+struct st_device {
+    struct st_object parent;
+    const struct st_device_ops *ops;
+    void *user_data;
+
+    /* L1-managed state */
+    uint32_t open_flags;
+    uint32_t open_count;
+
+    /* Optional: per-device serialization for open/close/control */
+    st_mutex_t lock;
+};
+________________________________________
+[GUARANTEE]
+API Compliance
+The implementation must provide the following exact signatures:
+st_err_t st_device_register(struct st_device *dev, const char *name, uint16_t type, uint16_t flags);
+st_err_t st_device_unregister(struct st_device *dev);
+
+struct st_device *st_device_find(const char *name);
+
+st_err_t st_device_open(struct st_device *dev, uint32_t oflag);
+st_err_t st_device_close(struct st_device *dev);
+
+st_ssize_t st_device_read(struct st_device *dev, uint32_t pos, void *buffer, uint32_t size);
+st_ssize_t st_device_write(struct st_device *dev, uint32_t pos, const void *buffer, uint32_t size);
+
+st_err_t st_device_control(struct st_device *dev, int cmd, void *arg);
+Layering
+•	L1 must not depend on any specific peripheral class (I2C/UART/SPI/etc.).
+•	All peripheral-specific behavior is delegated to dev->ops.
+________________________________________
+[SPECIFICATION]
+Global invariants
+1)	The registry contains only devices with:
+o	dev != NULL
+o	dev->parent.cls == ST_OBJECT_DEVICE
+o	a valid name (non-empty, null-terminated within ST_NAME_MAX)
+2)	Device names are unique within the registry.
+3)	A registered device remains valid until it is unregistered.
+Error model
+•	ST_EOK success.
+•	ST_EINVAL invalid argument / invalid object state.
+•	ST_EEXIST name collision at registration.
+•	ST_ENOENT device not found.
+•	ST_EBUSY unregister attempted while open_count > 0.
+•	ST_ENOSYS operation not supported (ops == NULL or specific function pointer is NULL).
+________________________________________
+Operation: st_device_register()
+Precondition
+•	dev != NULL
+•	name != NULL and name length in (0, ST_NAME_MAX)
+•	dev is not currently registered (i.e., not linked into the registry list)
+Postcondition
+•	On success:
+o	dev->parent.cls == ST_OBJECT_DEVICE
+o	dev->parent.type == type, dev->parent.flags == flags
+o	dev->parent.name is set to name (truncated only if explicitly allowed; Phase 2 defines exact rule)
+o	dev becomes discoverable via st_device_find(name)
+o	dev->open_count == 0
+o	dev->open_flags == 0
+System Algorithm (Phase 2 refined details apply)
+1)	Validate arguments.
+2)	Acquire registry lock.
+3)	Check for name uniqueness.
+4)	Initialize object/device fields (name, type, flags, list node, device lock).
+5)	Insert into registry list.
+6)	Release registry lock.
+________________________________________
+Operation: st_device_unregister()
+Precondition
+•	dev != NULL
+•	dev is registered
+Postcondition
+•	If dev->open_count > 0: return ST_EBUSY, registry remains unchanged.
+•	Else:
+o	remove dev from registry
+o	after removal, st_device_find(dev->parent.name) must not return dev
+System Algorithm
+1)	Validate arguments.
+2)	Acquire registry lock.
+3)	If dev->open_count > 0, release lock and return ST_EBUSY.
+4)	Remove from registry list.
+5)	Release registry lock.
+________________________________________
+Operation: st_device_find()
+Precondition
+•	name != NULL and name length in (0, ST_NAME_MAX)
+Postcondition
+•	If found: returns a pointer to the registered device whose parent.name matches name.
+•	If not found: returns NULL.
+System Algorithm
+1)	Validate arguments.
+2)	Acquire registry lock.
+3)	Iterate registry list; compare names.
+4)	Release registry lock.
+5)	Return device pointer (or NULL).
+________________________________________
+Operation: st_device_open()
+Precondition
+•	dev != NULL and dev is registered
+Postcondition
+•	On success:
+o	if dev->ops == NULL or dev->ops->open == NULL, return ST_ENOSYS
+o	else call dev->ops->open(dev, oflag) exactly once
+o	if the underlying open succeeds (ST_EOK):
+	increment dev->open_count
+	update dev->open_flags (Phase 2 defines exact merge/override rule)
+System Algorithm
+1)	Validate arguments.
+2)	Acquire dev->lock.
+3)	Dispatch to ops->open if present.
+4)	If success, update open state.
+5)	Release dev->lock.
+________________________________________
+Operation: st_device_close()
+Precondition
+•	dev != NULL and dev is registered
+Postcondition
+•	If dev->open_count == 0: return ST_EINVAL.
+•	Else:
+o	call dev->ops->close(dev) if present; if absent return ST_ENOSYS
+o	on underlying close success, decrement dev->open_count
+o	if open_count becomes 0, clear open_flags (Phase 2 defines exact rule)
+System Algorithm
+1)	Validate arguments.
+2)	Acquire dev->lock.
+3)	Validate open_count.
+4)	Dispatch to ops->close.
+5)	Update open state.
+6)	Release dev->lock.
+________________________________________
+Operation: st_device_read() / st_device_write() / st_device_control() (wrappers)
+Precondition
+•	dev != NULL and dev is registered
+Postcondition
+•	If ops == NULL or the specific operation pointer is NULL:
+o	read/write returns ST_ENOSYS (cast/returned as st_ssize_t)
+o	control returns ST_ENOSYS
+•	Else:
+o	the wrapper calls the underlying function exactly once and returns its result
+________________________________________
